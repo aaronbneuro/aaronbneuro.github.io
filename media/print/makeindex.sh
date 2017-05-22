@@ -7,5 +7,6 @@ touch index.html
 
 for fn in $FNAMES; do
     echo "<br/><a href='$fn'>$fn</a>" >> index.html
+    echo "<br/><a href='$fn'>$fn</a>"
 done
 
