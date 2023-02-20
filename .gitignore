@@ -3,7 +3,8 @@ cv/*.tex
 cv/*.aux
 cv/*.out
 cv/*.log
-cv/pubs/papers.tex
+cv/make
+cv/pubs/papers.bib
 cv/pubs/_posters
 cv/pubs/_rejected
 words/notes/
