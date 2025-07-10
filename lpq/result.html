@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>License Plate Info</title>
+  <title>Plate Match Result</title>
 </head>
 <body>
-  <h2>License Plate Details</h2>
+  <h2>Match Found</h2>
   <div id="result"></div>
 
   <script>
     const record = JSON.parse(localStorage.getItem('matchedRecord'));
+    const resultBox = document.getElementById('result');
 
     if (!record) {
-      document.getElementById('result').innerText = 'No record found.';
+      resultBox.innerHTML = '<p style="color:red;">No matching record found.</p>';
     } else {
-      const fields = ['Make', 'Model', 'Color', 'Date/time first observed', 'Notes'];
-      const display = fields.map(f => `<p><strong>${f}:</strong> ${record[f] || 'N/A'}</p>`).join('');
-      document.getElementById('result').innerHTML = display;
+      const fields = ["Vehicle Type", "State / GOV", "Location", "Date", "Time"];
+      resultBox.innerHTML = fields.map(f => 
+        `<p><strong>${f}:</strong> ${record[f] || 'N/A'}</p>`
+      ).join('');
     }
   </script>
 </body>

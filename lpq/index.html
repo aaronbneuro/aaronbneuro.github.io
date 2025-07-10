@@ -1,61 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>License Plate Lookup (ODS)</title>
+  <title>License Plate Lookup</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
   <h2>Enter license plate</h2>
-  <input type="text" id="plateInput" placeholder="License plate">
+  <input type="text" id="plateInput" placeholder="Plate No.">
   <button onclick="searchPlate()">Search</button>
-
-  <div id="result" style="margin-top:20px;"></div>
+  <div id="message" style="margin-top:20px;color:red;"></div>
 
   <script>
-    let odsData = [];
+    let xlsxData = [];
 
-    async function loadODS() {
+    async function loadXLSX() {
       try {
-        const response = await fetch('data.ods');
+        const response = await fetch('data.xlsx');
         const arrayBuffer = await response.arrayBuffer();
-        const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-        const firstSheet = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[firstSheet];
-        odsData = XLSX.utils.sheet_to_json(sheet);
-        console.log("ODS loaded successfully.");
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+        // Row 8 is index 7 (zero-based). Use it as header row.
+        const rawData = XLSX.utils.sheet_to_json(sheet, {
+          range: 7,
+          header: 1
+        });
+
+        const headers = rawData[0]; // row 8 headers
+        xlsxData = rawData.slice(1).map(row => {
+          const record = {};
+          headers.forEach((key, i) => record[key] = row[i]);
+          return record;
+        });
       } catch (error) {
-        document.getElementById('result').innerHTML = 
-          '<p style="color:red;">Failed to load data.ods. Make sure the file exists in the same folder.</p>';
+        document.getElementById('message').innerText = 'Failed to load data.xlsx.';
         console.error(error);
       }
     }
 
     function searchPlate() {
       const input = document.getElementById('plateInput').value.trim().toUpperCase();
-      const resultBox = document.getElementById('result');
-      resultBox.innerHTML = '';
+      const resultBox = document.getElementById('message');
+      resultBox.innerText = '';
 
-      if (!odsData.length) {
-        resultBox.innerHTML = '<p style="color:red;">ODS data not loaded.</p>';
+      if (!xlsxData.length) {
+        resultBox.innerText = 'XLSX data not loaded.';
         return;
       }
 
-      const match = odsData.find(entry =>
+      const match = xlsxData.find(entry =>
         (entry["Plate No."] || '').toString().trim().toUpperCase() === input
       );
 
       if (match) {
-        const fields = ["Vehicle Type", "State / GOV", "Location", "Date", "Time"];
-        resultBox.innerHTML = fields.map(f =>
-          `<p><strong>${f}:</strong> ${match[f] || 'N/A'}</p>`
-        ).join('');
+        localStorage.setItem('matchedRecord', JSON.stringify(match));
+        window.location.href = 'result.html';
       } else {
-        resultBox.innerHTML = '<p style="color:red;">License plate not found.</p>';
+        resultBox.innerText = 'Plate not found.';
       }
     }
 
-    // Automatically load the file on page load
-    window.addEventListener('DOMContentLoaded', loadODS);
+    window.addEventListener('DOMContentLoaded', loadXLSX);
   </script>
 </body>
 </html>
