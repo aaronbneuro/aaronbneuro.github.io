@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>License Plate Info</title>
+</head>
+<body>
+  <h2>License Plate Details</h2>
+  <div id="result"></div>
+
+  <script>
+    const record = JSON.parse(localStorage.getItem('matchedRecord'));
+
+    if (!record) {
+      document.getElementById('result').innerText = 'No record found.';
+    } else {
+      const fields = ['Make', 'Model', 'Color', 'Date/time first observed', 'Notes'];
+      const display = fields.map(f => `<p><strong>${f}:</strong> ${record[f] || 'N/A'}</p>`).join('');
+      document.getElementById('result').innerHTML = display;
+    }
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>License Plate Lookup</title>
+</head>
+<body>
+  <h2>Enter license plate</h2>
+  <input type="text" id="plateInput" placeholder="License plate">
+  <button onclick="searchPlate()">Search</button>
+
+  <script>
+    async function searchPlate() {
+      const input = document.getElementById('plateInput').value.trim().toUpperCase();
+      const response = await fetch('data.csv');
+      const csvText = await response.text();
+
+      const rows = csvText.split('\n').map(line => line.split(','));
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+
+      const plateIndex = headers.indexOf('License plate');
+
+      for (const row of dataRows) {
+        if (row[plateIndex]?.trim().toUpperCase() === input) {
+          const record = {};
+          headers.forEach((h, i) => record[h.trim()] = row[i]?.trim());
+
+          // Save record to localStorage
+          localStorage.setItem('matchedRecord', JSON.stringify(record));
+
+          // Redirect to result page
+          window.location.href = 'result.html';
+          return;
+        }
+      }
+
+      alert("License plate not found.");
+    }
+  </script>
+</body>
+</html>
+
