@@ -41,11 +41,11 @@
       }
 
       const match = odsData.find(entry =>
-        (entry["License plate"] || '').toString().trim().toUpperCase() === input
+        (entry["Plate No."] || '').toString().trim().toUpperCase() === input
       );
 
       if (match) {
-        const fields = ["Make", "Model", "Color", "Date/time first observed", "Notes"];
+        const fields = ["Vehicle Type", "State / GOV", "Location", "Date", "Time"];
         resultBox.innerHTML = fields.map(f =>
           `<p><strong>${f}:</strong> ${match[f] || 'N/A'}</p>`
         ).join('');
