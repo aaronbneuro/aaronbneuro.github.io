@@ -1,41 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>License Plate Lookup</title>
+  <title>License Plate Lookup (ODS)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
   <h2>Enter license plate</h2>
   <input type="text" id="plateInput" placeholder="License plate">
   <button onclick="searchPlate()">Search</button>
 
+  <div id="result" style="margin-top:20px;"></div>
+
   <script>
-    async function searchPlate() {
+    let odsData = [];
+
+    async function loadODS() {
+      try {
+        const response = await fetch('data.ods');
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+        const firstSheet = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[firstSheet];
+        odsData = XLSX.utils.sheet_to_json(sheet);
+        console.log("ODS loaded successfully.");
+      } catch (error) {
+        document.getElementById('result').innerHTML = 
+          '<p style="color:red;">Failed to load data.ods. Make sure the file exists in the same folder.</p>';
+        console.error(error);
+      }
+    }
+
+    function searchPlate() {
       const input = document.getElementById('plateInput').value.trim().toUpperCase();
-      const response = await fetch('data.csv');
-      const csvText = await response.text();
+      const resultBox = document.getElementById('result');
+      resultBox.innerHTML = '';
 
-      const rows = csvText.split('\n').map(line => line.split(','));
-      const headers = rows[0];
-      const dataRows = rows.slice(1);
-
-      const plateIndex = headers.indexOf('License plate');
-
-      for (const row of dataRows) {
-        if (row[plateIndex]?.trim().toUpperCase() === input) {
-          const record = {};
-          headers.forEach((h, i) => record[h.trim()] = row[i]?.trim());
-
-          // Save record to localStorage
-          localStorage.setItem('matchedRecord', JSON.stringify(record));
-
-          // Redirect to result page
-          window.location.href = 'result.html';
-          return;
-        }
+      if (!odsData.length) {
+        resultBox.innerHTML = '<p style="color:red;">ODS data not loaded.</p>';
+        return;
       }
 
-      alert("License plate not found.");
+      const match = odsData.find(entry =>
+        (entry["License plate"] || '').toString().trim().toUpperCase() === input
+      );
+
+      if (match) {
+        const fields = ["Make", "Model", "Color", "Date/time first observed", "Notes"];
+        resultBox.innerHTML = fields.map(f =>
+          `<p><strong>${f}:</strong> ${match[f] || 'N/A'}</p>`
+        ).join('');
+      } else {
+        resultBox.innerHTML = '<p style="color:red;">License plate not found.</p>';
+      }
     }
+
+    // Automatically load the file on page load
+    window.addEventListener('DOMContentLoaded', loadODS);
   </script>
 </body>
 </html>
