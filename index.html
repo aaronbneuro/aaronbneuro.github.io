@@ -18,14 +18,48 @@
     header > h3 { display: inline-block; margin-bottom: -0.1em;}
     header span { margin-left: 18px; }
     li { list-style-type: none; }
-    ul li div  {
-#      width: 100%;
-#      height: 100%;
-#      background-color: #88DDFF;
-#      margin-left: -20px;
-#      padding-left: 20px;
-    }
     .random-choice { display: none; } // Hide all by default; no flickering
+
+    /* ── paper tag filter ── */
+    #tag-filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin: 8px 0 14px 0;
+    }
+    .tag-btn {
+        font-size: 11px;
+        padding: 2px 9px;
+        border: 1px solid #bbb;
+        border-radius: 10px;
+        background: #f4f4f4;
+        color: #555;
+        cursor: pointer;
+        transition: background .12s, color .12s, border-color .12s;
+        white-space: nowrap;
+        font-family: inherit;
+    }
+    .tag-btn:hover { background: #e2e2e2; border-color: #999; }
+    .tag-btn.active { background: #2a6ab5; border-color: #2a6ab5; color: #fff; }
+    .tag-btn.all-btn { font-weight: bold; }
+    .paper-tag {
+        display: inline-block;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: #e6effc;
+        color: #2a6ab5;
+        border: 1px solid #c0d5f0;
+        margin-left: 3px;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .paper-hidden { display: none !important; }
+    .paper-entry { display: block; margin-bottom: 0.25em; }
+    #pub-list br { display: none; }
+    .filtering .paper-entry { margin-bottom: 0.25em; }
+    .filtering .paper-entry br,
+    .filtering .paper-entry .paper-spacer { display: none; }
 </style>
 </head>
 <body>
@@ -50,7 +84,6 @@
 </html>
 
 <br/>
-        
 </td>
 <td>
     <dd><a href="lab/index.html"><img class="img-icon" src="images/brain.png"/></a>
@@ -140,12 +173,140 @@ Advanced undergraduates may sign up for 199 course credit and/or an Honors proje
     <h3><u>Papers</u></h3>
     <span>(<i>* = Equal contribution.</i>)</span>
 </header>
-<ul>
+<div id="tag-filter-bar"></div>
+<script>
+(function () {
+  /* ------------------------------------------------------------------ *
+   * Paper tag filter                                                     *
+   * To tag a paper, add  data-tags="tag1 tag2 …"  to its title <a>.    *
+   * ------------------------------------------------------------------ */
+  function isSeparator(nodes, i) {
+    return nodes[i]   && nodes[i].nodeName   === 'BR' &&
+           nodes[i+1] && nodes[i+1].nodeType === 3 && /\u00a0/.test(nodes[i+1].nodeValue) &&
+           nodes[i+2] && nodes[i+2].nodeName === 'BR';
+  }
+
+  function init() {
+    var anchors = Array.from(document.querySelectorAll('a[data-tags]'));
+
+    anchors.forEach(function (a) {
+      if (a.closest('.paper-entry')) return;
+
+      var tags = a.getAttribute('data-tags').trim().split(/\s+/);
+      var parent = a.parentNode;
+      var nodes = Array.from(parent.childNodes);
+      var anchorIdx = nodes.indexOf(a);
+      if (anchorIdx === -1) return;
+
+      var start = 0;
+      for (var i = anchorIdx - 1; i >= 2; i--) {
+        if (isSeparator(nodes, i - 2)) { start = i + 1; break; }
+        if (isSeparator(nodes, i - 1)) { start = i + 1; break; }
+        if (isSeparator(nodes, i))     { start = i + 3; break; }
+      }
+
+      var end = nodes.length;
+      for (var j = anchorIdx; j < nodes.length - 2; j++) {
+        if (isSeparator(nodes, j)) { end = j; break; }
+      }
+
+      var group = nodes.slice(start, end);
+      if (group.length === 0) return;
+
+      var span = document.createElement('span');
+      span.className = 'paper-entry';
+      span.setAttribute('data-filter-tags', tags.join(' '));
+      parent.insertBefore(span, group[0]);
+      group.forEach(function (n) { span.appendChild(n); });
+    });
+
+    var allTags = new Set();
+    document.querySelectorAll('.paper-entry').forEach(function (el) {
+      el.getAttribute('data-filter-tags').split(/\s+/).forEach(function (t) { allTags.add(t); });
+    });
+
+    var bar = document.getElementById('tag-filter-bar');
+    var pubList = document.getElementById('pub-list');
+    var postPubs = document.getElementById('post-pubs');
+    var active = new Set();
+
+    // Filtered view sits right after the bar
+    var filteredView = document.createElement('div');
+    filteredView.id = 'filtered-view';
+    filteredView.style.display = 'none';
+    filteredView.style.marginTop = '2em';
+    filteredView.style.marginLeft = '2em';
+    bar.insertAdjacentElement('afterend', filteredView);
+
+    function render() {
+      var filterActive = active.size > 0;
+
+      bar.querySelectorAll('.tag-btn').forEach(function (btn) {
+        btn.classList.toggle('active',
+          btn.dataset.tag === '__all__' ? !filterActive : active.has(btn.dataset.tag));
+      });
+
+      if (!filterActive) {
+        pubList.style.display = '';
+        postPubs.style.display = '';
+        filteredView.style.display = 'none';
+        filteredView.innerHTML = '';
+        return;
+      }
+
+      pubList.style.display = 'none';
+      postPubs.style.display = 'none';
+      filteredView.style.display = 'block';
+      filteredView.innerHTML = '';
+
+      document.querySelectorAll('.paper-entry').forEach(function (el) {
+        var elTags = new Set(el.getAttribute('data-filter-tags').split(/\s+/));
+        if (!Array.from(active).every(function (t) { return elTags.has(t); })) return;
+        var clone = el.cloneNode(true);
+        clone.style.display = 'block';
+        clone.style.marginBottom = '0.9em';
+        Array.from(clone.childNodes).forEach(function (n) {
+          if (n.nodeName === 'BR') n.remove();
+          if (n.nodeType === 3 && /^\s*\u00a0\s*$/.test(n.nodeValue)) n.remove();
+        });
+        filteredView.appendChild(clone);
+      });
+    }
+
+    var allBtn = document.createElement('button');
+    allBtn.className = 'tag-btn all-btn active';
+    allBtn.textContent = 'all';
+    allBtn.dataset.tag = '__all__';
+    allBtn.addEventListener('click', function () { active.clear(); render(); });
+    bar.appendChild(allBtn);
+
+    Array.from(allTags).sort().forEach(function (tag) {
+      var btn = document.createElement('button');
+      btn.className = 'tag-btn';
+      btn.textContent = tag;
+      btn.dataset.tag = tag;
+      btn.addEventListener('click', function () {
+        if (active.has(tag)) { active.delete(tag); } else { active.add(tag); }
+        render();
+      });
+      bar.appendChild(btn);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+<ul id="pub-list">
 <h4><u>Preprints</u></h4>
 <ul>
 
 Banavar NV, Bornstein AM.
-<a href="https://osf.io/preprints/psyarxiv/zdq5v">Variability in Complex Constructs: Inferring risk preference and temporal discounting.</a>
+<a href="https://osf.io/preprints/psyarxiv/zdq5v" data-tags="decision-making methods theory">
+Variability in Complex Constructs: Inferring risk preference and temporal discounting.</a>
 [<a href="cv/pubs/2023b_bb_rxiv.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
@@ -161,14 +322,6 @@ Banavar NV, Bornstein AM.
 -->
 
 <!--
-Chen Y, Harhen NC, Stout DA, Glynn L, Davis E, Bornstein AM.
-Early-life unpredictability is associated with greater uncertainty-adaptive planning in adults.
-[<a href="cv/pubs/2024_chsgdb_rxiv.pdf">pdf</a>]
-[<a href="cv/pubs/2024_chsgdb_supp.pdf">supplement</a>]
-[<a href="https://github.com/uciccnl/">code</a>]
-[<a href="cv/pubs/2024_chsb_ccn.pdf">ccn 2024</a>]
-<br/> &nbsp; <br/>
-
 Barfuss W, Bornstein AM, Budiono R, Constantino SM. 
 <a href="">Sustaining the Commons: Using Resource-Rational Reinforcement Learning (R3L) to Understand and Promote the Adaptive Use of Shared Resources</a>
 <i>Proceedings of the National Academy of Sciences.</i>
@@ -184,7 +337,7 @@ Edens D, Bornstein AM, Zhou D.
 -->
 
 Harhen NC, Bornstein AM*, Hartley CA*.
-<a href="https://osf.io/preprints/psyarxiv/78zmx/">
+<a href="https://osf.io/preprints/psyarxiv/78zmx/" data-tags="memory decision-making development memory-sampling">
 Developmental changes in memory structure and precision alter the use of retrieved episodes during decisions for reward.</a>
 <!--
 <i>Proceedings of the National Academy of Sciences.</i>
@@ -214,7 +367,7 @@ Dynamic biases from memory inform ongoing perceptual evidence accumulation.</a>
 -->
 
 Wang W, Chierchia G, Cooley BJ, Chang T, Bornstein AM, Schweizer S.
-<a href="https://osf.io/preprints/psyarxiv/z6vej/">
+<a href="https://osf.io/preprints/psyarxiv/z6vej/" data-tags="decision-making social memory memory-sampling">
 Social Decision Making under Uncertainty</a>.
 <!--
  Varies with Depressive Symptoms and Memory Specificity</a>.
@@ -226,7 +379,7 @@ Social Decision Making under Uncertainty</a>.
 <br/> &nbsp; <br/>
 
 Yoo J, Bornstein AM.
-<a href="https://dx.doi.org/10.31234/osf.io/sgcy5">
+<a href="https://dx.doi.org/10.31234/osf.io/sgcy5" data-tags="decision-making reinforcement-learning">
 Temporal dynamics of model-based control reveal arbitration between multiple task representations.</a>
 [<a href="cv/pubs/2024_yb_rxiv.pdf">pdf</a>]
 [<a href="cv/pubs/2024_yb_rxiv_supp.pdf">supplement</a>]
@@ -234,20 +387,22 @@ Temporal dynamics of model-based control reveal arbitration between multiple tas
 <br/> &nbsp; <br/>
 
 <!--
-Zhang Y*, Chen Y*, Stout DA, Bornstein AM.
+Zhang Y*, Chen Y*, Harhen NC, Stout DA, Glynn L, Davis E, Bornstein AM.
 <a href="">
 Early-life, but not lifelong, adversity affects uncertainty-adaptive planning in a structured foraging task.</a>
-[<a href="cv/pubs/2026_zcsb_rxiv.pdf">pdf</a>]
-[<a href="cv/pubs/2024_csb_ccn.pdf">ccn 2024</a>]
+[<a href="cv/pubs/2026_zchsgdb_rxiv.pdf">pdf</a>]
+[<a href="https://github.com/uciccnl/">code</a>]
+[<a href="cv/pubs/2024_chsb_ccn.pdf">ccn 2024</a>]
 <br/> &nbsp; <br/>
 -->
 
 Zhou D, Noh SM, Harhen NC, Banavar NV, Kirwan B, Yassa MA, Bornstein AM.
-<a href="https://www.biorxiv.org/content/10.1101/2025.10.12.681901v1">
+<a href="https://www.biorxiv.org/content/10.1101/2025.10.12.681901v1" data-tags="memory neural-networks theory">
 A compressed code for memory discrimination.</a>
 [<a href="cv/pubs/2025_znhbkyb_rxiv.pdf">pdf</a>]
 [<a href="cv/pubs/2025_znhbkyb_rxiv_supp.pdf">supplement</a>]
 [<a href="cv/pubs/2024_znyb_ccn.pdf">ccn 2024</a>]
+
 
 </ul> <!-- Preprints -->
 
@@ -274,7 +429,7 @@ Metabolic considerations for cognitive modeling (Commentary on Haueis &amp; Cola
 
 Harhen NC, Budiono R, Hartley CA*, Bornstein AM*
 (in press).
-<a href="https://osf.io/preprints/t8hpr">
+<a href="https://osf.io/preprints/t8hpr" data-tags="decision-making development foraging">
 Structure inference in complex environments improves from childhood to adulthood.</a>
 <i>Developmental Science.</i>
 [<a href="cv/pubs/2026_hbhb_devsci.pdf">pdf</a>]
@@ -285,7 +440,7 @@ Structure inference in complex environments improves from childhood to adulthood
 
 Noh SM*, Cooper KW*, Guo S, Zhou D, Stark CEL, Bornstein AM
 (in press).
-<a href="https://doi.org/10.1093/geronb/gbag038">
+<a href="https://doi.org/10.1093/geronb/gbag038" data-tags="memory aging decision-making neural-networks cognitive-graphs">
 Multi-step inference can be improved across the human lifespan with individualized memory interventions.</a>
 <i>The Journals of Gerontology, Series B: Psychological Sciences and Social Sciences.</i>
 [<a href="cv/pubs/2025_ncgzsb_rxiv.pdf">pdf</a>]
@@ -293,7 +448,7 @@ Multi-step inference can be improved across the human lifespan with individualiz
 
 Noh SM*, Zhou D*, Cooper KW, Guo S, Dinh ET, Bornstein AM 
 (2026).
-<a href="https://www.sciencedirect.com/science/article/pii/S0028393226000424">
+<a href="https://www.sciencedirect.com/science/article/pii/S0028393226000424" data-tags="memory methods neural-networks cognitive-graphs">
 Sparsity and memory constraints interact with training sequence to bias learning of associative maps.</a> 
 <i>Neuropsychologia</i>, 225:109396.
 [<a href="cv/pubs/2026_nzcgdb_np.pdf">pdf</a>]
@@ -341,7 +496,7 @@ Temporal dynamics of model-based control reveal arbitration between multiple tas
 
 Hadj-Amar B, Bornstein AM, Guindani M, Vannucci M
 (2025).
-<a href="https://www.tandfonline.com/doi/full/10.1080/10618600.2025.2551271">
+<a href="https://www.tandfonline.com/doi/full/10.1080/10618600.2025.2551271" data-tags="methods fmri">
 Discrete Autoregressive Switching Processes with Cumulative Shrinkage Priors for Graphical Modeling of Time Series Data.</a>
 <i>Journal of Computational and Graphical Statistics.</i>
 [<a href="cv/pubs/2025_hbgv_jcgs.pdf">pdf</a>]
@@ -349,7 +504,7 @@ Discrete Autoregressive Switching Processes with Cumulative Shrinkage Priors for
 	
 Schetzsle B, Lee J, Bornstein AM, Shahbaba B, Guindani M
 (2025).
-<a href="https://doi.org/10.1080/26941899.2025.2519436">
+<a href="https://doi.org/10.1080/26941899.2025.2519436" data-tags="methods fmri">
 A Bayesian Time-Varying Psychophysiological Interaction Model.</a>
 <i>Data Science in Science</i>, 4(1):2519436.
 [<a href="cv/pubs/2025_slbsg_dsis.pdf">pdf</a>]
@@ -357,7 +512,8 @@ A Bayesian Time-Varying Psychophysiological Interaction Model.</a>
 
 Khoudary A, Bornstein AM*, Peters MAK*
 (2025).
-Investigating implicit and explicit expectations in perceptual decision making.
+<a href="" data-tags="perceptual-decisions decision-making evidence-accumulation">
+Investigating implicit and explicit expectations in perceptual decision making.</a>
 <i>Proceedings of the 47th Annual Conference of the Cognitive Science Society</i>.
 [<a href="cv/pubs/2025_kbp_cs.pdf">pdf</a>]
 <!--
@@ -367,7 +523,7 @@ Investigating implicit and explicit expectations in perceptual decision making.
 
 Khoudary A, Peters MAK*, Bornstein AM*
 (2025).
-<a href="http://dx.doi.org/10.1111/ejn.70098">
+<a href="http://dx.doi.org/10.1111/ejn.70098" data-tags="decision-making methods philosophy evidence-accumulation">
 Reasoning goals and representational decisions in computational cognitive neuroscience: lessons from the drift diffusion model.</a>
 <i>European Journal of Neuroscience</i>, 61:e7009.
 [<a href="cv/pubs/2025_kpb_ejn.pdf">pdf</a>]
@@ -380,7 +536,8 @@ Reasoning goals and representational decisions in computational cognitive neuros
 
 Banavar NV, Noh SM, Wahlheim CN, Cassidy BS, Kirwan CB, Stark CEL, Bornstein AM
 (2024).
-<a href="https://dx.doi.org/10.3389/fnhum.2024.1379287">A response time model of the three-choice Mnemonic Similarity Task provides stable, mechanistically interpretable individual-difference measures.</a>
+<a href="https://dx.doi.org/10.3389/fnhum.2024.1379287" data-tags="memory methods aging evidence-accumulation">
+A response time model of the three-choice Mnemonic Similarity Task provides stable, mechanistically interpretable individual-difference measures.</a>
 <i>Frontiers in Human Neuroscience</i>, 18:137928.
 [<a href="cv/pubs/2024_bnwcksb_fhn.pdf">pdf</a>]
 [<a href="cv/pubs/2022_bb_iccm.pdf">iccm 2022</a>]
@@ -391,14 +548,16 @@ Banavar NV, Noh SM, Wahlheim CN, Cassidy BS, Kirwan CB, Stark CEL, Bornstein AM
 	
 Yoo J, Chrastil ER, Bornstein AM
 (2024).
-<a href="https://dx.doi.org/10.1037/dec0000249">Cognitive graphs: Representational substrates for planning.</a>
+<a href="https://dx.doi.org/10.1037/dec0000249" data-tags="decision-making cognitive-graphs reinforcement-learning theory">
+Cognitive graphs: Representational substrates for planning.</a>
 <i>Decision</i>, 11(4), 537-556.
 [<a href="cv/pubs/2024_ycb_dec.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
 Chen Y, Harhen NC, Stout DA, Bornstein AM
 (2024).
-Early life unpredictability modulates planning horizon in a structured foraging task.
+<a href="" data-tags="foraging decision-making adversity early-life-unpredictability computational-psychiatry foraging">
+Early life unpredictability modulates planning horizon in a structured foraging task.</a>
 <i>Cognitive Computational Neuroscience</i>.
 [<a href="cv/pubs/2024_chsb_ccn.pdf">pdf</a>]
 <!-- [<a href="https://github.com/">code</a>] -->
@@ -406,54 +565,41 @@ Early life unpredictability modulates planning horizon in a structured foraging 
 
 Yoo J, Zhou D, Bornstein AM
 (2024).
+<a href="" data-tags="reinforcement-learning theory">
 Latent cause inference as an efficient and flexible learning rule for cognitive graphs.
 <i>Cognitive Computational Neuroscience</i>.
 [<a href="cv/pubs/2024_yzb_ccn.pdf">pdf</a>]
 <!-- [<a href="https://github.com/">code</a>] -->
 <br/> &nbsp; <br/>
 
-<!--
-Zhou D, Noh SM, Yassa MA, Bornstein AM
-(2024).
-Pattern separation using compressed and semantic representations of memory.
-<i>Cognitive Computational Neuroscience</i>.
-[<a href="cv/pubs/2024_znyb_ccn.pdf">pdf</a>]
-<br/> &nbsp; <br/>
--->
-
 Chen J, Bornstein AM.
 (2024).
-<a href="https://doi.org/10.1016/j.tics.2024.04.003">The causal structure and computational value of narratives.</a>
+<a href="https://doi.org/10.1016/j.tics.2024.04.003" data-tags="memory reinforcement-learning theory narratives">
+The causal structure and computational value of narratives.</a>
 <i>Trends in Cognitive Sciences</i>, 28(8):769-781.
 [<a href="cv/pubs/2024_cb_tics.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
-<!--
-Noh SM, Cooper KW, Stark CEL, Bornstein AM
-(in press).
-<a href="https://dx.doi.org/10.31234/osf.io/3mhj6">Multi-step planning can be improved across the human lifespan with individualized memory interventions.</a>
-<i>Communications Psychology</i>.
-[<a href="cv/pubs/2023_ncsb_rxiv.pdf">pdf</a>]
-<br/> &nbsp; <br/>
--->
-
 Zhou D, Bornstein AM
 (2024).
-<a href="https://doi.org/10.1017/S0140525X23003394">Expanding horizons in reinforcement learning for curious exploration and creative planning (Commentary on Ivancovsky et al).</a>
+<a href="https://doi.org/10.1017/S0140525X23003394" data-tags="decision-making reinforcement-learning commentary">
+Expanding horizons in reinforcement learning for curious exploration and creative planning (Commentary on Ivancovsky et al).</a>
 <i>Behavioral and Brain Sciences</i>, 47, e118.
 [<a href="cv/pubs/2024_zb_bbs.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
 Banavar NV, Bornstein AM
 (2024).
-<a href="https://link.springer.com/book/10.1007/978-3-031-55889-4">Multi-plasticities: Distinguishing context-specific habits from complex perseverations.</a>
+<a href="https://link.springer.com/book/10.1007/978-3-031-55889-4" data-tags="decision-making theory addiction computational-psychiatry habits">
+Multi-plasticities: Distinguishing context-specific habits from complex perseverations.</a>
 In Y. Vandaele (Ed.). <i>Habits - Their Definition, Neurobiology and Role in Addiction</i>. Cham, Switzerland: Springer Nature.
 [<a href="cv/pubs/2024_bb_habits.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
 Harhen NC, Bornstein AM
 (2024).
-<a href="https://dx.doi.org/10.1111/tops.12701">Interval timing as a computational pathway from early life adversity to affective disorders.</a>
+<a href="https://dx.doi.org/10.1111/tops.12701" data-tags="development adversity early-life-unpredictability theory computational-psychiatry">
+Interval timing as a computational pathway from early life adversity to affective disorders.</a>
 <i>Topics in Cognitive Science</i>, 16(2024):92-112.
 [<a href="cv/pubs/2024_hb_topics.pdf">pdf</a>]
 [<a href="cv/pubs/2022_hb_iccm.pdf">iccm 2022</a>]
@@ -469,7 +615,8 @@ Harhen NC, Bornstein AM
 
 Noh SM, Singla UK, Bennett IJ, Bornstein AM
 (2023).
-<a href="https://dx.doi.org/10.1038/s41598-023-44107-5">Memory precision and age differentially predict the use of decision-making strategies across the lifespan.</a>
+<a href="https://dx.doi.org/10.1038/s41598-023-44107-5" data-tags="memory aging decision-making reinforcement-learning memory-sampling">
+Memory precision and age differentially predict the use of decision-making strategies across the lifespan.</a>
 <i>Scientific Reports</i>, 13:17014.
 [<a href="cv/pubs/2023_nsbb_srep.pdf">pdf</a>]
 [<a href="https://github.com/uciccnl/agebandits/">code &amp; data</a>]
@@ -477,7 +624,7 @@ Noh SM, Singla UK, Bennett IJ, Bornstein AM
 
 Bornstein AM, Aly M, Feng SF, Turk-Browne NB, Norman KA, Cohen JD
 (2023).
-<a href="https://dx.doi.org/10.3758/s13415-023-01092-6">
+<a href="https://dx.doi.org/10.3758/s13415-023-01092-6" data-tags="memory perceptual-decisions fmri decision-making evidence-accumulation">
 Associative memory retrieval modulates upcoming perceptual decisions.</a>
 <i>Cognitive, Affective, &amp; Behavioral Neuroscience</i>, 23:645-665.
 [<a href="cv/pubs/2023_baftnc_cabn.pdf">pdf</a>]
@@ -491,7 +638,8 @@ Associative memory retrieval modulates upcoming perceptual decisions.</a>
 <div>
 Harhen NC, Bornstein AM
 (2023).
-<a href="https://dx.doi.org/10.1073/pnas.2216524120">Overharvesting in human patch foraging reflects rational structure learning and adaptive planning.</a>
+<a href="https://dx.doi.org/10.1073/pnas.2216524120" data-tags="decision-making foraging reinforcement-learning">
+Overharvesting in human patch foraging reflects rational structure learning and adaptive planning.</a>
 <i>Proceedings of the National Academy of Sciences</i>, 120(13):e2216524120.
 [<a href="cv/pubs/2023a_hb_pnas.pdf">pdf</a>]
 [<a href="cv/pubs/2023a_hb_pnas_supp.pdf">supplement</a>]
@@ -508,7 +656,7 @@ Harhen NC, Bornstein AM
 <ul>
 Otto AR, Devine S, Schultz E, Bornstein AM*, Louie K*
 (2022).
-<a href="https://doi.org/10.1038/s41598-022-22416-5">
+<a href="https://doi.org/10.1038/s41598-022-22416-5" data-tags="decision-making">
 Context-dependent choice and evaluation in real-world consumer behavior.</a>
 <i>Scientific Reports</i>, 12:17744.
 [<a href="cv/pubs/2022_odsbk_scirep.pdf">pdf</a>]
@@ -518,45 +666,21 @@ Context-dependent choice and evaluation in real-world consumer behavior.</a>
 
 Khoudary A, Peters MAK*, Bornstein AM*
 (2022).
-Precision-weighted evidence integration predicts time-varying influence of memory on perceptual decisions.
+<a href="" data-tags="evidence-accumulation theory">
+Precision-weighted evidence integration predicts time-varying influence of memory on perceptual decisions.</a>
 <i>Cognitive Computational Neuroscience</i>.
 [<a href="cv/pubs/2022_kpb_ccn.pdf">pdf</a>]
 [<a href="https://github.com/ari-khoudary/time-varying-precision-weighted-msddm">code</a>]
 <br/> &nbsp; <br/>
 
-<!--
-Banavar NV, Bornstein AM
-(2022).
-<a href="https://mathpsych.org/presentation/907">
-Response time modeling provides stable and mechanistically interpretable measures of individual differences in behavioral pattern separation.</a>
-<i>Proceedings of the 20th International Conference on Cognitive Modeling</i>.
-[<a href="cv/pubs/2022_bb_iccm.pdf">pdf</a>]
-<br/> &nbsp; <br/>
--->
-	
 Rmus M, Ritz H, Hunter LE, Bornstein AM*, Shenhav A*
 (2022).
-<a href="https://doi.org/10.1016/j.cognition.2022.105103">
+<a href="https://doi.org/10.1016/j.cognition.2022.105103" data-tags="decision-making cognitive-graphs reinforcement-learning">
 Humans can navigate complex graph structures acquired during latent learning.</a>
 <i>Cognition</i>, 225:105103.
 [<a href="cv/pubs/2022_rrhbs_cognition.pdf">pdf</a>]
 [<a href="cv/pubs/2022_rrhbs_cognition_supp.docx">supplement</a>]
 <br/> &nbsp; <br/>
-
-<!--
-Banavar NV, Bornstein AM 
-(2022).
-Decision difficulty modulates the re-use of computations across trials in non-sequential decision tasks.
-<i>Proceedings of the 5th Multidisciplinary Conference on Reinforcement Learning and Decision Making.</i>
-[<a href="cv/pubs/2022_bb_rldm.pdf">pdf</a>]
-<br/> &nbsp; <br/>
-
-Yoo J, Bornstein AM
-(2022).
-Two-stage task with increased state space complexity to assess online planning.
-<i>Proceedings of the 5th Multidisciplinary Conference on Reinforcement Learning and Decision Making.</i>
-[<a href="cv/pubs/2022_yb_rldm.pdf">pdf</a>]
--->
 
 </ul> <!-- 2022 -->
 
@@ -564,26 +688,16 @@ Two-stage task with increased state space complexity to assess online planning.
 <ul>
 Wang S, Feng SF, Bornstein AM
 (2021).
-<a href="https://wires.onlinelibrary.wiley.com/doi/full/10.1002/wcs.1581">
+<a href="https://wires.onlinelibrary.wiley.com/doi/full/10.1002/wcs.1581" data-tags="memory decision-making theory evidence-accumulation">
 Mixing memory and desire: How dynamic reactivation of multiple memory representations guides decisions for reward.</a>
 <i>Wiley Interdisciplinary Reviews in Cognitive Science</i>, e1581.
 [<a href="cv/pubs/2021_wfb_wires.pdf">pdf</a>]
 [<a href="cv/pubs/2021_wfb_wires_cover.jpg">cover</a> (<a href="https://www.stephanie-f-scholz.com/">artist</a>)]
 <br/> &nbsp; <br/>
 
-<!--
-Banavar NV, Lee MD, Bornstein AM
-(2021).
-<a href="https://mathpsych.org/presentation/610">
-Sequential effects in non-sequential tasks.</a>
-<i>Proceedings of the 19th International Conference on Cognitive Modeling</i>.
-[<a href="cv/pubs/2021_blb_iccm.pdf">pdf</a>]
-<br/> &nbsp; <br/>
--->
-
 Harhen NC, Hartley CA, Bornstein AM
 (2021).
-<a href="https://escholarship.org/uc/item/9c33b182">
+<a href="https://escholarship.org/uc/item/9c33b182" data-tags="decision-making foraging reinforcement-learning">
 Model-based foraging using latent-cause inference.</a>
 <i>Proceedings of the 43rd Annual Conference of the Cognitive Science Society</i>.
 [<a href="cv/pubs/2021_hhb_cs.pdf">pdf</a>]
@@ -595,7 +709,7 @@ Model-based foraging using latent-cause inference.</a>
 <ul>
 Rouhani N, Norman KA, Niv Y, Bornstein AM
 (2020).
-<a href="https://dx.doi.org/10.1016/j.cognition.2020.104269">
+<a href="https://dx.doi.org/10.1016/j.cognition.2020.104269" data-tags="memory reinforcement-learning">
 Reward prediction errors create event boundaries in memory.</a>
 <i>Cognition</i>, 203:104269.
 [<a href="cv/pubs/2020_rnnb_cognition.pdf">pdf</a>]
@@ -606,7 +720,7 @@ Reward prediction errors create event boundaries in memory.</a>
 
 Bornstein AM*, Pickard H*
 (2020).
-<a href="https://dx.doi.org/10.1038/s41386-019-0594-2">
+<a href="https://dx.doi.org/10.1038/s41386-019-0594-2" data-tags="memory decision-making addiction theory computational-psychiatry memory-sampling">
 Chasing the first high: Memory sampling in drug choice.</a>
 <i>Neuropsychopharmacology</i>, 45(6):907-915.
 [<a href="cv/pubs/2020_bp_npp.pdf">pdf</a>]
@@ -622,7 +736,7 @@ Chasing the first high: Memory sampling in drug choice.</a>
 <ul>
 Kane GA, Bornstein AM, Shenhav A, Wilson RC, Daw ND, Cohen JD
 (2019).
-<a href="https://doi.org/10.7554/eLife.48429">
+<a href="https://doi.org/10.7554/eLife.48429" data-tags="decision-making foraging animal-models">
 Rats exhibit similar biases in foraging and intertemporal choice tasks.</a>
 <i>eLife</i>, 8:e48429.
 [<a href="cv/pubs/2019_kbswdc_elife.pdf">pdf</a>]
@@ -630,7 +744,7 @@ Rats exhibit similar biases in foraging and intertemporal choice tasks.</a>
 
 Millner AJ, den Ouden HEM, Gershman SJ, Glenn CR, Kearns J, Bornstein AM, Marx BP, Keane TM, Nock MK
 (2019).
-<a href="https://dx.doi.org/10.1037/abn0000395">
+<a href="https://dx.doi.org/10.1037/abn0000395" data-tags="decision-making computational-psychiatry reinforcement-learning">
 Suicidal thoughts and behaviors are associated with an increased decision-making bias for active responses to escape aversive states.</a>
 <i>Journal of Abnormal Psychology</i>, 128(2):106-118.
 
@@ -640,7 +754,7 @@ Suicidal thoughts and behaviors are associated with an increased decision-making
 <ul>
 Hoskin AN, Bornstein AM, Norman KA, Cohen JD
 (2018).
-<a href="https://dx.doi.org/10.3758/s13415-018-00674-z">
+<a href="https://dx.doi.org/10.3758/s13415-018-00674-z" data-tags="memory fmri working-memory">
 Refresh my memory: Episodic memory reinstatements intrude on working memory maintenance.</a>
 <i>Cognitive, Affective, &amp; Behavioral Neuroscience</i>, 19:338-354.
 [<a href="cv/pubs/2018_hbnc_cabn.pdf">pdf</a>]
@@ -651,7 +765,8 @@ Refresh my memory: Episodic memory reinstatements intrude on working memory main
 
 Bornstein AM, Khaw MW, Shohamy D, Daw ND
 (2017).
-<a href="https://dx.doi.org/10.1038/ncomms15958">Reminders of past choices bias decisions for reward in humans.</a>
+<a href="https://dx.doi.org/10.1038/ncomms15958" data-tags="memory decision-making reinforcement-learning memory-sampling">
+Reminders of past choices bias decisions for reward in humans.</a>
 <i>Nature Communications</i>, 8:15958.
 <!-- doi:10.1038/ncomms15958 -->
 [<a href="cv/pubs/2017_bksd_nc.pdf">pdf</a>]
@@ -661,7 +776,8 @@ Bornstein AM, Khaw MW, Shohamy D, Daw ND
 
 Bornstein AM, Norman KA
 (2017).
-<a href="https://dx.doi.org/10.1038/nn.4573">Reinstated episodic context guides sampling-based decisions for reward.</a>
+<a href="https://dx.doi.org/10.1038/nn.4573" data-tags="memory fmri decision-making memory-sampling">
+Reinstated episodic context guides sampling-based decisions for reward.</a>
 <i>Nature Neuroscience</i>, 20:997-1003.
 <!-- doi:10.1038/nn.4573 -->
 <!-- [<a href="http://rdcu.be/tffi">readcube</a>] -->
@@ -673,21 +789,24 @@ Bornstein AM, Norman KA
 <br/> &nbsp; <br/>
 
 Kane GA, Bornstein AM, Shenhav A, Wilson RC, Daw ND, Cohen JD (2017).
-<a href="https://mindmodeling.org/cogsci2017/papers/0128/paper0128.pdf">Mechanisms of overharvesting in patch foraging.</a>
+<a href="https://mindmodeling.org/cogsci2017/papers/0128/paper0128.pdf" data-tags="foraging decision-making animal-models">
+Mechanisms of overharvesting in patch foraging.</a>
 <i>Proceedings of the 39th Annual Conference of the Cognitive Science Society</i>, 637-642.
 [<a href="cv/pubs/2017_kbswdc_cs.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
 Bornstein AM*, Constantino SM*
 (2017).
-Nudge back: Towards a taxonomy of scientific rationalities.
+<a href="" data-tags="theory philosophy">
+Nudge back: Towards a taxonomy of scientific rationalities.</a>
 <i>London Conference in Critical Thought.</i>
 [<a href="cv/pubs/2017_bc_lcct_abstract.pdf">abstract</a>]
 <br/> &nbsp; <br/>
 
 Bornstein AM, Miller KJ, Shenhav A
 (2015).
-<a href="http://onlinelibrary.wiley.com/doi/10.1111/ejn.12906/full">Walking bundles of habits (and Response-Outcome associations).</a>
+<a href="http://onlinelibrary.wiley.com/doi/10.1111/ejn.12906/full" data-tags="habits decision-making commentary">
+Walking bundles of habits (and Response-Outcome associations).</a>
 <i>European Journal of Neuroscience</i>, 41:1356-1357.
 [<a href="cv/pubs/2015_bsm_ejn.pdf">pdf</a>]
 <!-- doi:10.1111/ejn.12906 -->
@@ -696,14 +815,16 @@ Bornstein AM, Miller KJ, Shenhav A
 
 Bornstein AM, Shvartsman M 
 (2015).
-<a href="cv/pubs/2015_bs_jn_rejected.pdf">Distinguishing between descriptive and rational approaches to collapsing decision bounds.</a>
+<a href="cv/pubs/2015_bs_jn_rejected.pdf" data-tags="commentary evidence-accumulation">
+Distinguishing between descriptive and rational approaches to collapsing decision bounds.</a>
 <i>Unpublished JNeuro Journal Club submission.</i>
 [<a href="cv/pubs/2015_bs_jn_rejected.pdf">pdf</a>]
 <br/> &nbsp; <br/> 
 
 Bornstein AM
 (2014).
-Functions of the hippocampal memory system in instrumental control.
+<a href="" data-tags="theory fmri memory reinforcement-learning decision-making memory-sampling">
+Functions of the hippocampal memory system in instrumental control.</a>
 Available from ProQuest Dissertations & Theses Global (3614853).
 [<a href="cv/pubs/2013_b_diss_intro.pdf">introduction</a>]
 [<a href="cv/pubs/2013_b_diss_conclusion.pdf">conclusion</a>]
@@ -711,7 +832,8 @@ Available from ProQuest Dissertations & Theses Global (3614853).
 
 Bornstein AM, Daw ND
 (2013).
-<a href="http://www.ploscompbiol.org/article/info:doi/10.1371/journal.pcbi.1003387">Cortical and hippocampal correlates of deliberation during model-based decisions for rewards in humans.</a>
+<a href="http://www.ploscompbiol.org/article/info:doi/10.1371/journal.pcbi.1003387" data-tags="fmri decision-making reinforcement-learning memory-sampling">
+Cortical and hippocampal correlates of deliberation during model-based decisions for rewards in humans.</a>
 <i>PLoS Computational Biology</i>, 9(12):e1003387.
 <!-- doi:10.1371/journal.pcbi.1003387 -->
 [<a href="cv/pubs/2013_bd_ploscb.pdf">pdf</a>]
@@ -720,14 +842,16 @@ Bornstein AM, Daw ND
 
 Bornstein AM, Constantino SM
 (2012).
-<a href="cv/pubs/2012_bc_jn_rejected.pdf">The temporal dynamics of value-based decisions in humans.</a>
+<a href="cv/pubs/2012_bc_jn_rejected.pdf" data-tags="commentary memory-sampling">
+The temporal dynamics of value-based decisions in humans.</a>
 <i>Unpublished JNeuro Journal Club submission.</i>
 [<a href="cv/pubs/2012_bc_jn_rejected.pdf">pdf</a>]
 <br/> &nbsp; <br/>
 
 Bornstein AM, Daw ND
 (2012).
-<a href="http://onlinelibrary.wiley.com/doi/10.1111/j.1460-9568.2011.07920.x/full">Dissociating hippocampal and striatal contributions to sequential prediction learning.</a>
+<a href="http://onlinelibrary.wiley.com/doi/10.1111/j.1460-9568.2011.07920.x/full" data-tags="memory reinforcement-learning fmri">
+Dissociating hippocampal and striatal contributions to sequential prediction learning.</a>
 <i>European Journal of Neuroscience</i>, 35:1011-1023.
 <!-- doi:10.1111/j.1460-9568.2011.07920.x -->
 [<a href="cv/pubs/2012_bd_ejn.pdf">pdf</a>]
@@ -736,7 +860,8 @@ Bornstein AM, Daw ND
 
 Bornstein AM, Daw ND
 (2011).
-<a href="http://www.sciencedirect.com/science/article/pii/S0959438811000365">Multiplicity of control in the basal ganglia: Computational roles of striatal subregions.</a>
+<a href="http://www.sciencedirect.com/science/article/pii/S0959438811000365" data-tags="reinforcement-learning theory">
+Multiplicity of control in the basal ganglia: Computational roles of striatal subregions.</a>
 <i>Current Opinion in Neurobiology</i>, 21(3):374-380.
 <!-- doi:10.1016/j.conb.2011.02.009 -->
 [<a href="cv/pubs/2011_bd_coin.pdf">pdf</a>]
@@ -744,7 +869,8 @@ Bornstein AM, Daw ND
 
 Bornstein AM, Nylen EL, Steele SA
 (2011).
-<a href="http://www.jneurosci.org/content/31/28/10117.full">Unblocking the neural substrates of model-based value.</a>
+<a href="http://www.jneurosci.org/content/31/28/10117.full" data-tags="decision-making reinforcement-learning commentary animal-models">
+Unblocking the neural substrates of model-based value.</a>
 <i>Journal of Neuroscience</i>, 31(28):10117-10118.
 <!-- doi:10.1523/jneurosci.1883-11.2011 -->
 <!-- <blockquote>Comment on McDannald MA, Lucantonio F, Burke KA, Niv Y, Schoenbaum G (2011) <a href="http://www.jneurosci.org/content/31/7/2700.full">Ventral striatum and orbitofrontal cortex are both required for model-based, but not model-free, reinforcement learning.</a> <i>Journal of Neuroscience</i> 31(7):2700-2705</blockquote> -->
@@ -753,14 +879,16 @@ Bornstein AM, Nylen EL, Steele SA
 
 Preston AR, Bornstein AM, Hutchinson JB, Gaare ME, Glover GH, Wagner AD
 (2010).
-<a href="http://www.mitpressjournals.org/doi/abs/10.1162/jocn.2009.21195">High-resolution fMRI of content-sensitive subsequent memory responses in human medial temporal lobe.</a>
+<a href="http://www.mitpressjournals.org/doi/abs/10.1162/jocn.2009.21195" data-tags="fmri memory">
+High-resolution fMRI of content-sensitive subsequent memory responses in human medial temporal lobe.</a>
 <i>Journal of Cognitive Neuroscience</i>, 22:156-173.
 <!-- doi:10.1162/jocn.2009.21195 -->
 <br/> &nbsp; <br/> 
 
 Floares A, Jakary A, Bornstein A, Deicken R
 (2006).
-<a href="http://ieeexplore.ieee.org/document/1716739/">Neural networks and Classification and Regression Trees are able to distinguish females with major depression from healthy controls using neuroimaging data.</a>
+<a href="http://ieeexplore.ieee.org/document/1716739/" data-tags="methods fmri neural-networks">
+Neural networks and Classification and Regression Trees are able to distinguish females with major depression from healthy controls using neuroimaging data.</a>
 <i>Proceedings of the IEEE International Joint Conference of Neural Networks, 2006</i>, 4605-4611.
 <!-- doi:10.1109/ijcnn.2006.247090 -->
 <br/>
@@ -768,6 +896,7 @@ Floares A, Jakary A, Bornstein A, Deicken R
 </ul>   <!-- 2018 and before -->
 </ul>   <!-- Publications -->
 </ul>   <!-- Papers -->
+<div id="post-pubs">
 
 <p/>
 
@@ -872,6 +1001,7 @@ How I spent my fifteen minutes: I was once an extra in -- and contributed <a hre
 <br/>&nbsp;<br/>
 -->
 <p/>
+</div><!-- /post-pubs -->
 <font color="#FFFFFF">
 Arron 
 Aron 
@@ -885,32 +1015,4 @@ NYU
 Princeton 
 Irvine 
 UCI
-
-aaron@bornstein.org 
-aaronb@nyu.edu 
-aaronb@cns.nyu.edu 
-aaronmb@mit.edu
-aaronb@mit.edu 
-aaronmb@alum.mit.edu 
-aaronmb@princeton.edu 
-aaron.bornstein@uci.edu 
-bornstea@uci.edu 
-
-neuroscience 
-psychology 
-economics 
-brains 
-math 
-mathematics 
-hippocampus 
-striatum 
-reinforcement learning 
-episodic memory 
-
-netris
-Andre Bretton-Woods
-Andre Breton-Woods
-Black Swann's Way
 </font>
-</body> 
-</html>
